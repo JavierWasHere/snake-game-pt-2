@@ -1,0 +1,149 @@
+#include <iostream>
+#include <unistd.h>
+#include <termios.h>
+#include <cstdlib>
+#include <ctime>
+#include <vector>
+#include <sys/ioctl.h>
+
+using namespace std;
+
+const int width = 20;
+const int height = 20;
+int x, y, foodX, foodY, score;
+int tailLength;
+vector<int> tailX, tailY;
+bool gameOver;
+enum Direction { STOP = 0, LEFT, RIGHT, UP, DOWN };
+Direction dir;
+
+// Real-time input without Enter
+char getch() {
+    char buf = 0;
+    struct termios old = {0};
+    if (tcgetattr(STDIN_FILENO, &old) < 0) perror("tcsetattr()");
+    old.c_lflag &= ~ICANON; // disable buffering
+    old.c_lflag &= ~ECHO;   // don't echo input
+    old.c_cc[VMIN] = 0;
+    old.c_cc[VTIME] = 0;
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &old) < 0) perror("tcsetattr ICANON");
+    read(STDIN_FILENO, &buf, 1);
+    old.c_lflag |= ICANON;
+    old.c_lflag |= ECHO;
+    if (tcsetattr(STDIN_FILENO, TCSADRAIN, &old) < 0) perror("tcsetattr ~ICANON");
+    return buf;
+}
+
+bool kbhit() {
+    timeval tv = {0L, 0L};
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    return select(1, &fds, NULL, NULL, &tv) > 0;
+}
+
+void Setup() {
+    srand(time(0));
+    gameOver = false;
+    dir = STOP;
+    x = width / 2;
+    y = height / 2;
+    foodX = rand() % width;
+    foodY = rand() % height;
+    score = 0;
+    tailLength = 0;
+    tailX.clear();
+    tailY.clear();
+}
+
+void Draw() {
+    system("clear");
+    for (int i = 0; i < width + 2; i++) cout << "#";
+    cout << endl;
+
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            if (j == 0) cout << "#";
+            if (i == y && j == x)
+                cout << "O";
+            else if (i == foodY && j == foodX)
+                cout << "F";
+            else {
+                bool printed = false;
+                for (int k = 0; k < tailLength; k++) {
+                    if (tailX[k] == j && tailY[k] == i) {
+                        cout << "o";
+                        printed = true;
+                        break;
+                    }
+                }
+                if (!printed) cout << " ";
+            }
+            if (j == width - 1) cout << "#";
+        }
+        cout << endl;
+    }
+
+    for (int i = 0; i < width + 2; i++) cout << "#";
+    cout << endl;
+    cout << "Score: " << score << endl;
+}
+
+void Input() {
+    if (kbhit()) {
+        char key = getch();
+        switch (key) {
+            case 'a': if (dir != RIGHT) dir = LEFT; break;
+            case 'd': if (dir != LEFT) dir = RIGHT; break;
+            case 'w': if (dir != DOWN) dir = UP; break;
+            case 's': if (dir != UP) dir = DOWN; break;
+            case 'x': gameOver = true; break;
+        }
+    }
+}
+
+void Logic() {
+    if (tailLength > 0) {
+        tailX.insert(tailX.begin(), x);
+        tailY.insert(tailY.begin(), y);
+        if (tailX.size() > tailLength) {
+            tailX.pop_back();
+            tailY.pop_back();
+        }
+    }
+
+    switch (dir) {
+        case LEFT: x--; break;
+        case RIGHT: x++; break;
+        case UP: y--; break;
+        case DOWN: y++; break;
+        default: break;
+    }
+
+    if (x >= width || x < 0 || y >= height || y < 0)
+        gameOver = true;
+
+    for (int i = 0; i < tailLength; i++) {
+        if (tailX[i] == x && tailY[i] == y)
+            gameOver = true;
+    }
+
+    if (x == foodX && y == foodY) {
+        score += 10;
+        foodX = rand() % width;
+        foodY = rand() % height;
+        tailLength++;
+    }
+}
+
+int main() {
+    Setup();
+    while (!gameOver) {
+        Draw();
+        Input();
+        Logic();
+        usleep(100000); // 100ms
+    }
+    cout << "Game Over! Final Score: " << score << endl;
+    return 0;
+}
